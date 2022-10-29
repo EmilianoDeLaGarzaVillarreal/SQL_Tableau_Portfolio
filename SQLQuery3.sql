@@ -73,6 +73,11 @@ WHERE continent IS NOT NULL
 GROUP BY date
 ORDER BY date ASC;
 
+SELECT *
+FROM Portfolio_project..CovidDeaths
+WHERE location LIKE '%World%'
+ORDER BY date ASC;
+
 
 -- Looking at total population vs total vaccinations
 -- Use CTE
@@ -124,7 +129,7 @@ FROM #percentage_pop_vaccinated;
 
 
 
--- Creating view for later data visualization
+-- Creating views for later data visualization
 DROP VIEW IF EXISTS percentage_vaccinated
 USE Portfolio_project
 GO
@@ -140,3 +145,55 @@ SELECT
 	JOIN Portfolio_project..CovidVaccinations AS b
 	ON a.location = b.location AND a.date = b.date
 	WHERE a.continent IS NOT NULL;
+
+
+DROP VIEW IF EXISTS covid_evo_global
+USE Portfolio_project;
+GO
+CREATE VIEW covid_evo_global AS
+SELECT date, SUM(new_cases) AS total_cases_today, SUM(CAST(new_deaths AS INT)) as total_deaths_today, (SUM(CAST(new_deaths AS INT))/SUM(new_cases))*100 AS death_percentage
+FROM Portfolio_project..CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY date;
+
+
+USE Portfolio_project;
+GO
+CREATE VIEW cases_rel_deaths AS
+SELECT 
+	a.date,
+	a.location,
+	SUM(new_cases) OVER(PARTITION BY a.location ORDER BY a.location, a.date) AS total_cases_to_date,
+	SUM(CAST(a.new_deaths AS BIGINT)) OVER(PARTITION BY a.location ORDER BY a.location, a.date) AS total_deaths_to_date
+FROM Portfolio_project..CovidDeaths AS a
+JOIN Portfolio_project..CovidVaccinations AS b
+ON a.date = b.date AND a.location = b.location
+WHERE a.continent IS NOT NULL;
+
+
+-- Queries for tableau data visualization
+
+-- 1 total deaths and cases Global
+SELECT SUM(new_cases) AS total_cases, SUM(CAST(new_deaths AS BIGINT)) AS total_deaths, (SUM(CAST(new_deaths AS BIGINT))/SUM(new_cases))*100 AS death_percentage
+FROM Portfolio_project..CovidDeaths
+WHERE location LIKE '%World%';
+
+-- 2 total death count in each continent
+SELECT DISTINCT(continent), SUM(MAX(CAST(total_deaths AS BIGINT))) OVER (PARTITION BY continent) AS total_cont_deaths
+FROM Portfolio_project..CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY location, continent
+ORDER BY total_cont_deaths DESC;
+
+--3 percent of pop infected by country
+SELECT location, population, SUM(new_cases) AS total_cases, (SUM(new_cases)/population) * 100 AS percent_pop_infected
+FROM Portfolio_project..CovidDeaths
+WHERE continent IS NOT NULL
+GROUP BY location, population
+ORDER BY percent_pop_infected DESC;
+
+--4 percent of pop infected by country by date desc
+SELECT location, population, date, MAX(total_cases) as total_cases_to_date, (MAX(total_cases/population)) * 100 AS percent_pop_infected
+FROM Portfolio_project..CovidDeaths
+GROUP BY location, population, date
+ORDER BY percent_pop_infected DESC , date DESC;
